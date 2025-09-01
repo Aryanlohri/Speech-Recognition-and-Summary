@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Speech Summarizer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    nav {
+      background-color: #3a3a3a;
+      padding: 1rem;
+      text-align: center;
+      font-size: 1.5rem;
+      color: white;
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      padding: 1rem;
+      gap: 1rem;
+    }
+    .card {
+      background: #2a2a2a;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    h2 {
+      margin-top: 0;
+      margin-bottom: 1rem;
+      color: #cfcfcf;
+      text-align: center;
+    }
+    h3 { margin-bottom: 0.5rem; color: #cfcfcf; }
+    button, .file-label {
+      background-color: #4a4a4a;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      text-align: center;
+      width: 180px;
+    }
+    button:hover, .file-label:hover { background-color: #666; }
+    .file-input { display: none; }
+    .file-label { display: block; }
+    .file-name {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: #bbb;
+    }
+    textarea {
+      background: #333;
+      padding: 1rem;
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      resize: none;
+      flex: 1;
+      width: 100%;
+      box-sizing: border-box;
+      color: #e0e0e0;
+      font-size: 1rem;
+      margin-top: 1rem;
+      min-height: 150px;
+    }
+    .copy-btn {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      width: 180px;
+      background-color: #555;
+      align-self: center;
+    }
+    .copy-btn:hover { background-color: #777; }
+    .spinner {
+      display: none;
+      margin: 1rem auto;
+      border: 4px solid #444;
+      border-top: 4px solid #fff;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .slider { width: 100%; margin-top: 0.5rem; }
+    audio { margin-top: 0.5rem; width: 100%; }
+    #summary {
+      flex: 1;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      background: #222;
+      padding: 10px;
+      border-radius: 8px;
+      min-height: 150px;
+    }
+    .recording-indicator {
+      display: none;
+      margin-top: 5px;
+      color: red;
+      font-weight: bold;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <nav>🎤 Speech Recognition & Summarization</nav>
+  <div class="main">
+    <!-- Left side: Input -->
+    <div class="card">
+      <h2>Input</h2>
+      <form id="uploadForm" style="display:flex;flex-direction:column;align-items:center;">
+        <h3>Upload Audio File:</h3>
+        <label for="audioFile" class="file-label">📂 Choose Audio File</label>
+        <input type="file" id="audioFile" class="file-input" accept="audio/*" />
+        <div id="fileName" class="file-name">No file chosen</div>
+
+        <button type="button" id="recordBtn">🎤 Start Recording</button>
+        <div id="recIndicator" class="recording-indicator">● Recording...</div>
+        <input type="range" min="0" max="100" value="0" class="slider" id="volumeSlider" disabled />
+        <audio id="audioPreview" controls style="display:none;"></audio>
+
+        <button type="submit">⬆️ Upload / Summarize</button>
+      </form>
+
+      <div class="spinner" id="spinner"></div>
+
+      <h3>Transcription (Editable):</h3>
+      <textarea id="transcription" placeholder="Your transcription will appear here..."></textarea>
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <button class="copy-btn" type="button" onclick="summarizeText()">✨ Summarize Text</button>
+        <button class="copy-btn" type="button" onclick="clearText('transcription')">🧹 Clear</button>
+      </div>
+    </div>
+
+    <!-- Right side: Output -->
+    <div class="card">
+      <h2>Output</h2>
+      <h3>Summary:</h3>
+      <pre id="summary"></pre>
+      <div style="display:flex;flex-direction:column;align-items:center;">
+        <button class="copy-btn" type="button" onclick="copyText('summary')">📋 Copy Summary</button>
+        <button class="copy-btn" type="button" onclick="clearText('summary')">🧹 Clear</button>
+        <button class="copy-btn" type="button" onclick="downloadPDF()">📥 Download PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    const audioFileInput = document.getElementById('audioFile');
+    const fileNameDisplay = document.getElementById('fileName');
+    const uploadForm = document.getElementById('uploadForm');
+    const transcriptionBox = document.getElementById('transcription');
+    const summaryBox = document.getElementById('summary');
+    const spinner = document.getElementById('spinner');
+
+    audioFileInput.addEventListener('change', () => {
+      fileNameDisplay.textContent = audioFileInput.files.length > 0
+        ? audioFileInput.files[0].name
+        : 'No file chosen';
+    });
+
+    // Handle audio upload + summarization
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const file = audioFileInput.files[0];
+      if (!file) {
+        alert('Please choose an audio file first.');
+        return;
+      }
+
+      spinner.style.display = 'block';
+      const formData = new FormData();
+      formData.append('audio', file);
+
+      try {
+        const res = await fetch('/transcribe_and_summarize/', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        transcriptionBox.value = data.transcription || '';
+        summaryBox.textContent = data.summary || 'No summary generated.';
+      } catch (err) {
+        summaryBox.textContent = '❌ Error during upload.';
+      } finally {
+        spinner.style.display = 'none';
+      }
+    });
+
+    // Summarize typed/pasted text
+    async function summarizeText() {
+      const text = transcriptionBox.value.trim();
+      if (!text) {
+        alert('Please enter or transcribe some text first.');
+        return;
+      }
+
+      spinner.style.display = 'block';
+      try {
+        const response = await fetch("http://127.0.0.1:8000/summarize_text/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        const data = await response.json();
+        summaryBox.textContent = data.summary || 'No summary generated.';
+      } catch (err) {
+        summaryBox.textContent = '❌ Error summarizing text.';
+      } finally {
+        spinner.style.display = 'none';
+      }
+    }
+
+    // Copy text
+    function copyText(id) {
+      const el = document.getElementById(id);
+      navigator.clipboard.writeText(el.textContent || el.value || '');
+      alert('Copied!');
+    }
+
+    // Clear text
+    function clearText(id) {
+      const el = document.getElementById(id);
+      if (el.tagName === 'TEXTAREA') {
+        el.value = '';
+      } else {
+        el.textContent = '';
+      }
+    }
+
+    // Download PDF
+    function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const text = summaryBox.textContent.trim() || 'No summary available.';
+      doc.text(text, 10, 10);
+      doc.save('summary.pdf');
+    }
+  </script>
+</body>
+</html>
